@@ -235,3 +235,7 @@ aws logs tail /aws/eks/fabricate-eks/application --since 30m --region us-east-1 
 - *Helm `cannot re-use a name that is still in use`:* the release exists in the cluster but not in the state: `terraform import 'helm_release.fabricate[0]' 'fabricate/fabricate'`.
 - *GKE `409 Already exists`:* import the cluster and node pool: `terraform import 'module.cluster.google_container_cluster.primary' 'projects/PROJECT/locations/REGION/clusters/CLUSTER'` and `terraform import 'module.cluster.google_container_node_pool.primary' 'projects/PROJECT/locations/REGION/clusters/CLUSTER/nodePools/CLUSTER-pool'`.
 - *Changing `cloud` (aws ↔ gcp):* run `terraform init -reconfigure` and use a separate workspace (`terraform workspace new aws`), otherwise Terraform plans to delete the other cloud's resources.
+
+## License
+
+[BSD 3-Clause License](LICENSE).
