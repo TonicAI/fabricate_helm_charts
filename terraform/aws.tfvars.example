@@ -1,0 +1,31 @@
+# AWS (EKS). Copy to terraform.tfvars and edit.
+# Needs: AWS credentials and `export AWS_REGION=<kube_region>`.
+# Registry password: export TF_VAR_fabricate_registry_password='...'
+
+cloud        = "aws"
+kube_region  = "us-east-1"
+kube_cluster = "fabricate-eks"
+
+fabricate_env = {
+  FABRICATE_HOST           = "" # your domain (CNAME to the ALB); empty = derived from the ingress
+  FABRICATE_ADMIN_EMAIL    = "admin@example.com"
+  FABRICATE_MAIL_ADDRESS   = "smtp.example.com"
+  FABRICATE_MAIL_PORT      = "587"
+  FABRICATE_MAIL_USER_NAME = "no-reply@example.com"
+  FABRICATE_MAIL_PASSWORD  = "<smtp password>"
+  FABRICATE_MAIL_FROM      = "no-reply@example.com"
+  FABRICATE_DEPLOYMENT     = "1" # change the value (e.g. "2") and apply to restart/redeploy the pods
+}
+
+fabricate_registry_host     = "quay.io"
+fabricate_registry_username = "<username>"
+
+# Optional: tags on all AWS resources
+# tags = { Owner = "platform-team" }
+
+# Optional: use another VPC instead of the default one (subnets in at least two AZs)
+# kube_vpc_id     = "vpc-0123456789abcdef0"
+# kube_subnet_ids = ["subnet-aaaa", "subnet-bbbb"]
+
+# Optional: only provision cloud resources, install the Helm chart yourself
+# skip_helm = true

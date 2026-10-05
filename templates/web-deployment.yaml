@@ -1,0 +1,84 @@
+{{- if .Values.services.web.enabled }}
+{{- $svc := .Values.services.web -}}
+{{- $scaling := default (dict) $svc.scaling -}}
+{{- $webPort := include "fabricate.webPort" . | int -}}
+{{- $minReplicas := int (default 1 $scaling.min) -}}
+{{- $hcPath := trim (toString (default "/up" $svc.healthCheckPath)) -}}
+{{- $vpaManagesReplicas := default true (index (.Values.vpa | default dict) "managesReplicas") -}}
+{{- $secretEnv := fromYaml (include "fabricate.mergedAppSecretEnv" .) -}}
+{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "web" "env" $secretEnv "required" (list "FABRICATE_PDF_SOCKET_PATH" "FABRICATE_DATABASE_HOST" "FABRICATE_DATABASE_PORT" "FABRICATE_DATABASE_NAME" "FABRICATE_DATABASE_USERNAME" "FABRICATE_DATABASE_PASSWORD" "FABRICATE_REDIS_URL" "FABRICATE_REDIS_PASSWORD" "SECRET_KEY_BASE")) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "web") }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+{{- if not $vpaManagesReplicas }}
+  replicas: {{ $minReplicas }}
+{{- end }}
+  {{- include "fabricate.deploymentStrategyFor" (dict "root" . "svc" $svc) | nindent 2 }}
+  selector:
+    matchLabels:
+      {{- include "fabricate.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      annotations:
+        fabricate.ai/env-secret-checksum: {{ include "fabricate.envSecretChecksum" . | quote }}
+      labels:
+        {{- include "fabricate.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      {{- include "fabricate.workloadServiceAccountName" . | nindent 6 }}
+      {{- with $svc.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ int . }}
+      {{- end }}
+      {{- include "fabricate.serviceNodeSelector" (dict "svc" $svc) | nindent 6 }}
+      {{- include "fabricate.podColocation" . | nindent 6 }}
+      {{- include "fabricate.podTolerations" . | nindent 6 }}
+      {{- include "fabricate.imagePodPullSecrets" . | nindent 6 }}
+      {{- include "fabricate.initContainers" (dict "root" . "svc" $svc "mounts" (required "services.web.mounts is required" $svc.mounts)) | nindent 6 }}
+      {{- include "fabricate.sharedAppVolumesSecurityContext" . | nindent 6 }}
+      containers:
+        - name: web
+          image: {{ required "services.web.image is required" $svc.image | quote }}
+          imagePullPolicy: {{ include "fabricate.serviceImagePullPolicy" (dict "root" . "svc" $svc) }}
+          {{- include "fabricate.appContainerPtraceCapability" . | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: {{ $webPort }}
+          {{- $pr := $svc.probes | default dict }}
+          {{- if $pr.enabled }}
+          {{- $st := $pr.startup | default dict }}
+          {{- $rd := $pr.readiness | default dict }}
+          startupProbe:
+            httpGet:
+              path: {{ $hcPath }}
+              port: http
+            periodSeconds: {{ int (default 5 $st.periodSeconds) }}
+            failureThreshold: {{ int (default 60 $st.failureThreshold) }}
+          readinessProbe:
+            httpGet:
+              path: {{ $hcPath }}
+              port: http
+            periodSeconds: {{ int (default 5 $rd.periodSeconds) }}
+            timeoutSeconds: {{ int (default 3 $rd.timeoutSeconds) }}
+            failureThreshold: {{ int (default 2 $rd.failureThreshold) }}
+          {{- end }}
+          {{- if gt (int $svc.preStopSleepSeconds) 0 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "{{ int $svc.preStopSleepSeconds }}"]
+          {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ include "fabricate.sharedSecretName" . | quote }}
+          {{- include "fabricate.containerResources" (dict "svc" $svc) | nindent 10 }}
+          volumeMounts:
+            {{- include "fabricate.volumeMounts" (dict "mounts" (required "services.web.mounts is required" $svc.mounts)) | nindent 12 }}
+      volumes:
+        {{- include "fabricate.podVolumes" (dict "root" . "mounts" (required "services.web.mounts is required" $svc.mounts)) | nindent 8 }}
+{{- end }}

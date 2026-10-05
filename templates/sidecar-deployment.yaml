@@ -1,0 +1,48 @@
+{{- if .Values.services.sidecar.enabled }}
+{{- $svc := .Values.services.sidecar -}}
+{{- $scaling := default (dict) $svc.scaling -}}
+{{- $minReplicas := int (default 1 $scaling.min) -}}
+{{- $secretEnv := fromYaml (include "fabricate.mergedAppSecretEnv" .) -}}
+{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "sidecar" "env" $secretEnv "required" (list "FABRICATE_PDF_SOCKET_PATH")) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "sidecar") }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar
+spec:
+  replicas: {{ $minReplicas }}
+  {{- include "fabricate.deploymentStrategy" . | nindent 2 }}
+  selector:
+    matchLabels:
+      {{- include "fabricate.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sidecar
+  template:
+    metadata:
+      annotations:
+        fabricate.ai/env-secret-checksum: {{ include "fabricate.envSecretChecksum" . | quote }}
+      labels:
+        {{- include "fabricate.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sidecar
+    spec:
+      {{- include "fabricate.workloadServiceAccountName" . | nindent 6 }}
+      {{- include "fabricate.serviceNodeSelector" (dict "svc" $svc) | nindent 6 }}
+      {{- include "fabricate.podColocation" . | nindent 6 }}
+      {{- include "fabricate.podTolerations" . | nindent 6 }}
+      {{- include "fabricate.imagePodPullSecrets" . | nindent 6 }}
+      {{- include "fabricate.initContainers" (dict "root" . "svc" $svc "mounts" (required "services.sidecar.mounts is required" $svc.mounts)) | nindent 6 }}
+      {{- include "fabricate.sharedAppVolumesSecurityContext" . | nindent 6 }}
+      containers:
+        - name: sidecar
+          image: {{ required "services.sidecar.image is required" $svc.image | quote }}
+          imagePullPolicy: {{ include "fabricate.serviceImagePullPolicy" (dict "root" . "svc" $svc) }}
+          envFrom:
+            - secretRef:
+                name: {{ include "fabricate.sharedSecretName" . | quote }}
+          {{- include "fabricate.containerResources" (dict "svc" $svc) | nindent 10 }}
+          volumeMounts:
+            {{- include "fabricate.volumeMounts" (dict "mounts" (required "services.sidecar.mounts is required" $svc.mounts)) | nindent 12 }}
+      volumes:
+        {{- include "fabricate.podVolumes" (dict "root" . "mounts" (required "services.sidecar.mounts is required" $svc.mounts)) | nindent 8 }}
+{{- end }}

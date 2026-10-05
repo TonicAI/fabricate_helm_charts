@@ -1,0 +1,28 @@
+# GCP (GKE). Copy to terraform.tfvars and edit.
+# Needs: `gcloud auth application-default login`.
+# Registry password: export TF_VAR_fabricate_registry_password='...'
+
+cloud        = "gcp"
+project_id   = "your-gcp-project-id"
+kube_region  = "us-central1"
+kube_cluster = "fabricate-gke"
+
+fabricate_env = {
+  FABRICATE_HOST           = "" # your domain (A record to the load balancer IP); empty = derived from the ingress (<IP>.nip.io)
+  FABRICATE_ADMIN_EMAIL    = "admin@example.com"
+  FABRICATE_MAIL_ADDRESS   = "smtp.example.com"
+  FABRICATE_MAIL_PORT      = "587"
+  FABRICATE_MAIL_USER_NAME = "no-reply@example.com"
+  FABRICATE_MAIL_PASSWORD  = "<smtp password>"
+  FABRICATE_MAIL_FROM      = "no-reply@example.com"
+  FABRICATE_DEPLOYMENT     = "1" # change the value (e.g. "2") and apply to restart/redeploy the pods
+}
+
+fabricate_registry_host     = "quay.io"
+fabricate_registry_username = "<username>"
+
+# Optional: labels on all GCP resources (lowercase keys/values)
+# tags = { owner = "platform-team" }
+
+# Optional: only provision cloud resources, install the Helm chart yourself
+# skip_helm = true

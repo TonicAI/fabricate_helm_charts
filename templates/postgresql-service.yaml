@@ -1,0 +1,21 @@
+{{- if .Values.services.postgresql.enabled }}
+{{- $pgPort := include "fabricate.postgresql.port" . | int -}}
+{{- $secretEnv := fromYaml (include "fabricate.mergedAppSecretEnv" .) -}}
+{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "postgresql" "env" $secretEnv "required" (list "POSTGRES_USER" "POSTGRES_DB" "POSTGRES_PASSWORD")) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fabricate.postgresql.svc" . }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: {{ $pgPort }}
+      targetPort: postgresql
+  selector:
+    {{- include "fabricate.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+{{- end }}

@@ -1,0 +1,27 @@
+{{- /*
+  WaitForFirstConsumer StorageClass — required on multi-zone GKE/EKS when several RWO PD/EBS
+  claims attach to sibling pods (data + storage + sockets). Immediate binding allocates each claim
+  in arbitrary zones → merged node affinity impossible → Pending with "PersistentVolume node affinity".
+
+ Terraform enables this via module.cluster helm_extra_values; see README.
+*/}}
+{{- $scName := include "fabricate.delayedBindingStorageClassEffective" . | trim -}}
+{{- if ne $scName "" }}
+{{- $del := (.Values.volumesProvisioning | default dict).delayedBindingStorageClass | default dict }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ $scName | quote }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+provisioner: {{ trim (toString (default "" $del.provisioner)) | quote }}
+reclaimPolicy: {{ default "Delete" $del.reclaimPolicy | quote }}
+volumeBindingMode: WaitForFirstConsumer
+{{- if default true $del.allowVolumeExpansion }}
+allowVolumeExpansion: true
+{{- end }}
+{{- with index $del "parameters" }}
+parameters:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

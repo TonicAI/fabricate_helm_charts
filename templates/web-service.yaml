@@ -1,0 +1,63 @@
+{{- if .Values.services.web.enabled }}
+{{- $svc := .Values.services.web -}}
+{{- $legacy := trim (toString (default "" (index (default dict $svc.service) "type"))) -}}
+{{- $svcType := trim (toString (default "" (index $svc "type"))) -}}
+{{- if eq $svcType "" -}}
+{{- $svcType = $legacy -}}
+{{- end -}}
+{{- if eq $svcType "" -}}
+{{- $svcType = "ClusterIP" -}}
+{{- end -}}
+{{- if not (or (eq $svcType "LoadBalancer") (eq $svcType "ClusterIP") (eq $svcType "NodePort")) -}}
+{{- fail (printf "services.web.type must be LoadBalancer, ClusterIP, or NodePort; got %q" $svcType) -}}
+{{- end -}}
+{{- $webPort := include "fabricate.webPort" . | int -}}
+{{- $secretEnv := fromYaml (include "fabricate.mergedAppSecretEnv" .) -}}
+{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "web" "env" $secretEnv "required" (list "FABRICATE_PDF_SOCKET_PATH" "FABRICATE_DATABASE_HOST" "FABRICATE_DATABASE_PORT" "FABRICATE_DATABASE_NAME" "FABRICATE_DATABASE_USERNAME" "FABRICATE_DATABASE_PASSWORD" "FABRICATE_REDIS_URL" "FABRICATE_REDIS_PASSWORD" "SECRET_KEY_BASE")) -}}
+{{- $gceIng := and (eq (include "fabricate.ingressEnabled" . | trim) "1") (eq (include "fabricate.ingressProviderNormalized" . | trim) "gce") -}}
+{{- $bcName := include "fabricate.workloadName" (dict "root" . "suffix" "web-bc") -}}
+{{- $hcPath := trim (toString (default "/up" $svc.healthCheckPath)) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fabricate.web.svc" . }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+  {{- if $gceIng }}
+  annotations:
+    cloud.google.com/backend-config: {{ printf `{"default":"%s"}` $bcName | quote }}
+  {{- end }}
+spec:
+  type: {{ $svcType }}
+  ports:
+    - name: http
+      port: {{ $webPort }}
+      targetPort: http
+  selector:
+    {{- include "fabricate.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+{{- if $gceIng }}
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ $bcName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  healthCheck:
+    checkIntervalSec: 10
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: {{ $hcPath | quote }}
+{{- $probeHost := trim (include "fabricate.ingressHost" .) -}}
+{{- if ne $probeHost "" }}
+    host: {{ $probeHost | quote }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,13 @@
+{{- /*
+  Extra Kubernetes manifests rendered with the release (values: additionalResources, a list). Each item is either a
+  string (rendered through tpl, so it may use Helm templating) or a map (rendered as YAML). Use it for objects the
+  chart does not know about, e.g. an IngressClass, a Karpenter NodePool or an ExternalSecret.
+*/ -}}
+{{- range $resource := .Values.additionalResources }}
+---
+{{- if kindIs "string" $resource }}
+{{ tpl $resource $ }}
+{{- else }}
+{{ toYaml $resource }}
+{{- end }}
+{{- end }}

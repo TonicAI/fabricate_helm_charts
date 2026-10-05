@@ -1,0 +1,41 @@
+{{- if and (eq (include "fabricate.hpaOn" . | trim) "1") .Values.services.worker.enabled }}
+{{- $svc := .Values.services.worker -}}
+{{- $scaling := default (dict) $svc.scaling -}}
+{{- $minReplicas := int (default 1 $scaling.min) -}}
+{{- $maxReplicas := int (default $minReplicas $scaling.max) -}}
+{{- $cpuThreshold := int (default 70 $scaling.cpuThreshold) -}}
+{{- $ramThreshold := int (default 70 $scaling.ramThreshold) -}}
+{{- if gt $maxReplicas $minReplicas }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "worker") }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "worker") }}
+  minReplicas: {{ $minReplicas }}
+  maxReplicas: {{ $maxReplicas }}
+  metrics:
+    {{- if gt $cpuThreshold 0 }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $cpuThreshold }}
+    {{- end }}
+    {{- if gt $ramThreshold 0 }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $ramThreshold }}
+    {{- end }}
+{{- end }}
+{{- end }}

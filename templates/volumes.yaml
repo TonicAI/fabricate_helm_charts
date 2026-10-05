@@ -1,0 +1,58 @@
+{{- $mountVolumes := dict -}}
+{{- range $serviceName := (list "web" "worker" "sidecar" "postgresql" "redis") -}}
+{{- $service := index $.Values.services $serviceName | default (dict) -}}
+{{- if and (default false (index $service "enabled")) (kindIs "slice" (index $service "mounts")) -}}
+{{- range $mount := (index $service "mounts") -}}
+{{- $_ := set $mountVolumes (index $mount "name") true -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $volumeKey, $volume := .Values.volumes }}
+{{- if and (hasKey $mountVolumes $volumeKey) (kindIs "map" $volume) (hasKey $volume "size") }}
+{{- $pvcName := (printf "%s-%s" (include "fabricate.prefix" $) $volumeKey | lower | replace "_" "-" | trunc 63 | trimSuffix "-") }}
+{{- $existingPvc := lookup "v1" "PersistentVolumeClaim" $.Release.Namespace $pvcName }}
+{{- $desiredSize := index $volume "size" }}
+{{- $size := $desiredSize }}
+{{- if and $existingPvc (index $existingPvc "status") (index (index $existingPvc "status") "capacity") (index (index (index $existingPvc "status") "capacity") "storage") }}
+  {{- $size = index (index (index $existingPvc "status") "capacity") "storage" }}
+{{- end }}
+{{- $storageClass := trim (toString (default "" (index $volume "storageClass"))) }}
+{{- if and $existingPvc (index $existingPvc "spec") (hasKey (index $existingPvc "spec") "storageClassName") }}
+{{- $storageClass = trim (toString (index (index $existingPvc "spec") "storageClassName")) }}
+{{- end }}
+{{- $wffcSC := include "fabricate.delayedBindingStorageClassEffective" $ | trim -}}
+{{- if and (not $existingPvc) (ne $wffcSC "") (eq ($storageClass | trim) "") }}
+  {{- $storageClass = $wffcSC }}
+{{- end }}
+{{- $accessModes := list "ReadWriteOnce" }}
+{{- if hasKey $volume "accessModes" }}
+  {{- $am := index $volume "accessModes" }}
+  {{- if not (kindIs "slice" $am) }}
+  {{- fail (printf "volumes.%s.accessModes must be a list (e.g. [ReadWriteMany])" $volumeKey) }}
+  {{- end }}
+  {{- if eq (len $am) 0 }}
+  {{- fail (printf "volumes.%s.accessModes cannot be an empty list" $volumeKey) }}
+  {{- end }}
+  {{- $accessModes = $am }}
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $pvcName }}
+  labels:
+    {{- include "fabricate.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $volumeKey | quote }}
+spec:
+  accessModes:
+  {{- range $m := $accessModes }}
+    - {{ $m }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $size }}
+  {{- if ne $storageClass "" }}
+  storageClassName: {{ $storageClass | quote }}
+  {{- end }}
+---
+{{- end }}
+{{- end }}
