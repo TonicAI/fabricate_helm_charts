@@ -219,7 +219,6 @@ strategy:
 {{- end }}
 {{- end -}}
 
-
 {{- define "fabricate.appContainerPtraceCapability" -}}
 {{- if default false (index (.Values.volumesSecurity | default dict) "sysptrace") }}
 securityContext:

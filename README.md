@@ -38,8 +38,6 @@ terraform/aws.tfvars.example, gcp.tfvars.example   Variables templates
 - [Deploy to AWS EKS](#deploy-on-aws)
 - [Deploy to GCP GKE](#deploy-on-gcp)
 
-Never commit `terraform.tfvars`, Terraform state or generated values files: they contain secrets (the repo's `.gitignore` already excludes them, and `.helmignore` keeps `terraform/` out of the chart).
-
 ## Deploy on AWS
 
 ### 1. Authenticate and choose the region
@@ -56,7 +54,7 @@ By default the cluster, RDS and ElastiCache use the account's **default VPC** (i
 ### 2. Configure variables
 
 ```bash
-cp values.example.yaml values.yaml          # chart values (gitignored); the chart and Terraform read values.yaml
+cp values.example.yaml values.yaml
 cd terraform
 cp aws.tfvars.example terraform.tfvars
 ```
@@ -135,7 +133,7 @@ For HTTPS set `FABRICATE_PROTOCOL = "https"` and add a certificate to the ALB th
 gcloud auth application-default login
 gcloud services enable container.googleapis.com --project <project-id>
 
-cp values.example.yaml values.yaml          # chart values (gitignored)
+cp values.example.yaml values.yaml
 cd terraform
 cp gcp.tfvars.example terraform.tfvars      # set project_id, kube_region, SMTP, registry username
 export TF_VAR_fabricate_registry_password='<password>'
@@ -181,7 +179,6 @@ Connect kubectl to the cluster and look around:
 aws eks update-kubeconfig --region "$AWS_REGION" --name fabricate-eks   # your kube_cluster value
 kubectl get nodes,pods,pvc -n fabricate
 ```
-
 
 ```bash
 # apply changes to tfvars or chart files

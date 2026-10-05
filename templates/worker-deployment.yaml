@@ -30,25 +30,25 @@ spec:
         app.kubernetes.io/component: worker
     spec:
       {{- include "fabricate.workloadServiceAccountName" . | nindent 6 }}
-      {{- include "fabricate.serviceNodeSelector" (dict "svc" $svc) | nindent 6 }}
-      {{- include "fabricate.podColocation" . | nindent 6 }}
-      {{- include "fabricate.podTolerations" . | nindent 6 }}
-      {{- include "fabricate.imagePodPullSecrets" . | nindent 6 }}
-      {{- include "fabricate.initContainers" (dict "root" . "svc" $svc "mounts" (required "services.worker.mounts is required" $svc.mounts)) | nindent 6 }}
+      {{- with include "fabricate.serviceNodeSelector" (dict "svc" $svc) | trim }}{{- . | nindent 6 }}{{- end }}
+      {{- with include "fabricate.podColocation" . | trim }}{{- . | nindent 6 }}{{- end }}
+      {{- with include "fabricate.podTolerations" . | trim }}{{- . | nindent 6 }}{{- end }}
+      {{- with include "fabricate.imagePodPullSecrets" . | trim }}{{- . | nindent 6 }}{{- end }}
+      {{- with include "fabricate.initContainers" (dict "root" . "svc" $svc "mounts" (required "services.worker.mounts is required" $svc.mounts)) | trim }}{{- . | nindent 6 }}{{- end }}
       {{- include "fabricate.sharedAppVolumesSecurityContext" . | nindent 6 }}
       containers:
         - name: worker
           image: {{ required "services.worker.image is required" $svc.image | quote }}
           imagePullPolicy: {{ include "fabricate.serviceImagePullPolicy" (dict "root" . "svc" $svc) }}
-          {{- include "fabricate.appContainerPtraceCapability" . | nindent 10 }}
+          {{- with include "fabricate.appContainerPtraceCapability" . | trim }}{{- . | nindent 10 }}{{- end }}
           command:
             {{- toYaml (required "services.worker.command is required" $svc.command) | nindent 12 }}
           envFrom:
             - secretRef:
                 name: {{ include "fabricate.sharedSecretName" . | quote }}
-          {{- include "fabricate.containerResources" (dict "svc" $svc) | nindent 10 }}
+          {{- with include "fabricate.containerResources" (dict "svc" $svc) | trim }}{{- . | nindent 10 }}{{- end }}
           volumeMounts:
-            {{- include "fabricate.volumeMounts" (dict "mounts" (required "services.worker.mounts is required" $svc.mounts)) | nindent 12 }}
+            {{- include "fabricate.volumeMounts" (dict "mounts" (required "services.worker.mounts is required" $svc.mounts)) | trim | nindent 12 }}
       volumes:
-        {{- include "fabricate.podVolumes" (dict "root" . "mounts" (required "services.worker.mounts is required" $svc.mounts)) | nindent 8 }}
+        {{- include "fabricate.podVolumes" (dict "root" . "mounts" (required "services.worker.mounts is required" $svc.mounts)) | trim | nindent 8 }}
 {{- end }}

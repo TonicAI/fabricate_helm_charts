@@ -1,4 +1,4 @@
-# EKS with Auto Mode enabled. 
+# EKS with Auto Mode enabled.
 # Compute, Load Balancing, and Storage are managed by AWS.
 provider "aws" {
   default_tags {
