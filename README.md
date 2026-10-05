@@ -1,11 +1,11 @@
-# Tonic Fabricate (Helm + Terraform)
+## Tonic Fabricate (Helm + Terraform)
 
 This repository contains a Helm chart that deploys Fabricate (web, worker, PDF sidecar, postgresql - optional, redis - optional), and optional Terraform templates for common cloud providers that provision the resources.
 
 | Provider | Main resources Terraform creates |
 |----------|----------------------------------|
-| **Amazon Web Services (AWS)** (default) | EKS Auto Mode cluster, RDS PostgreSQL, ElastiCache Redis, S3 bucket, Bedrock API key, IAM roles, CloudWatch log groups |
-| **Google Cloud (GCP)** | GKE Standard cluster, Ubuntu Arm node pool (PostgreSQL and Redis run in the cluster) |
+| **AWS** (default) | EKS Auto Mode cluster, RDS PostgreSQL, ElastiCache Redis, S3 bucket, Bedrock API key, IAM roles, CloudWatch log groups |
+| **GCP** | GKE Standard cluster, PostgreSQL and Redis |
 
 #### Repository layout
 
