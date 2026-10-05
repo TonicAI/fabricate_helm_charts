@@ -2,8 +2,8 @@
 
 This repository contains a Helm chart that deploys Fabricate (web, worker, PDF sidecar, postgresql - optional, redis - optional), and optional Terraform templates for common cloud providers that provision the resources.
 
-| Provider | Main resources Terraform creates |
-|----------|----------------------------------|
+| Cloud Provider | Main resources Terraform creates |
+|----------------|----------------------------------|
 | **AWS** (default) | EKS Auto Mode cluster, RDS PostgreSQL, ElastiCache Redis, S3 bucket, Bedrock API key, IAM roles, CloudWatch log groups |
 | **GCP** | GKE Standard cluster, PostgreSQL and Redis |
 
