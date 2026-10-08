@@ -37,8 +37,8 @@ output "helm_volumes_security" {
 # Same rationale as GCP: several RWO EBS PVCs mounted by sibling Deployments — use WaitForFirstConsumer.
 output "helm_extra_values" {
   value = {
-    # All three pods share RWO EBS volumes and a local unix socket: keep them on one node so they move together
-    # on node replacement.
+    # web and worker share the RWO EBS data volume: keep them on one node so they move together
+    # on node replacement. The sidecar is reached over TCP and needs no volume.
     podColocation = { enabled = true }
 
     # EKS Auto Mode objects the chart does not own: a NodePool capped to var.eks_node_count nodes (cpu limit = count x

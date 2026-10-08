@@ -149,7 +149,7 @@ terraform output fabricate_ingress_address    # load balancer IP
 
 On GCP, PostgreSQL and Redis run **in the cluster** (StatefulSets with PVCs); there is no managed database. GKE Standard with Ubuntu nodes is required because `deno_sandbox` needs Landlock (not available on Autopilot / COS). Node pools are Arm (`t2a-standard-*`) by default; the chart tolerates the `kubernetes.io/arch=arm64` taint. GKE-only settings are in [terraform/gcp/variables.tf](terraform/gcp/variables.tf). `skip_helm` works the same way as on AWS.
 
-## What Terraform wires in (AWS)
+## What Terraform wires in
 
 Terraform builds the app configuration and the chart stores it in the Kubernetes Secret `<app>-<environment>-env` (default `fabricate-prod-env`). The pods read it as environment variables. It contains:
 
@@ -162,7 +162,7 @@ Terraform builds the app configuration and the chart stores it in the Kubernetes
 | `SECRET_KEY_BASE` | generated |
 | `FABRICATE_SIDEKIQ_CONCURRENCY`, `FABRICATE_DB_POOL_SIZE` | `10` and `20`, sized for the single node and the small database |
 | `FABRICATE_HOST`, `FABRICATE_ADMIN_EMAIL`, `FABRICATE_MAIL_*`, `FABRICATE_DEPLOYMENT`, ... | your `fabricate_env` in `terraform.tfvars` (anything you set there overrides the values above) |
-| `FABRICATE_PROTOCOL`, `FABRICATE_PORT`, `FABRICATE_DATA_DIR`, `FABRICATE_LOG_LEVEL`, `FABRICATE_ORGANIZATION_NAME`, `FABRICATE_PDF_SOCKET_PATH` | chart defaults (override them in `fabricate_env` too) |
+| `FABRICATE_PROTOCOL`, `FABRICATE_PORT`, `FABRICATE_DATA_DIR`, `FABRICATE_LOG_LEVEL`, `FABRICATE_ORGANIZATION_NAME`, `FABRICATE_PDF_HOST`, `FABRICATE_PDF_PORT` | chart defaults (override them in `fabricate_env` too) |
 
 List the keys in your cluster (names only), or read one value:
 
@@ -210,13 +210,13 @@ aws logs tail /aws/eks/fabricate-eks/application --since 30m --region us-east-1 
 **Pods are `Pending`: check node availability.** `kubectl get nodes` should show a node, and `kubectl describe pod` shows the reason.
 - *No nodes (AWS):* `kubectl get nodepool,nodeclaim` and `kubectl describe nodeclass default`. The cluster IAM role needs the Auto Mode managed policies and `sts:TagSession`, and the node role needs `AmazonEKSWorkerNodeMinimalPolicy` and `AmazonEC2ContainerRegistryPullOnly` (Terraform sets these). Also check the node pool's instance type and CPU limit (`eks_instance_type`, `eks_node_count`).
 - *"provisioner is not supported" or PVCs Pending (AWS):* the EBS StorageClass must use `ebs.csi.eks.amazonaws.com`. A StorageClass provisioner cannot be changed in place: uninstall the release and apply again.
-- *"didn't match PersistentVolume's node affinity":* sibling pods share RWO volumes; keep `podColocation` on and use the WaitForFirstConsumer StorageClass (both set by Terraform). `storageClassName` on existing PVCs is immutable: delete the PVCs and let Helm recreate them.
+- *"didn't match PersistentVolume's node affinity":* web and worker share the RWO data volume; keep `podColocation` on and use the WaitForFirstConsumer StorageClass (both set by Terraform). `storageClassName` on existing PVCs is immutable: delete the PVCs and let Helm recreate them.
 - *Untolerated taints or no arm64 image:* check `kubectl get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints'` and extend `tolerations`; if an image has no arm64 build, remove the `nodeSelector` entries in [terraform/aws/outputs.tf](terraform/aws/outputs.tf).
 
 **Containers crash or restart (`CrashLoopBackOff`, `Error`).** Read the first lines of the logs (ignore the long stack trace) and the CloudWatch group `/aws/eks/<kube_cluster>/application`. Usual causes:
 - `Not authorized to perform sts:AssumeRoleWithWebIdentity`: the service account name must equal the one the IAM role trusts (`<app>-<environment>-sa`). Terraform passes the same name to both; it differs only if you override `serviceAccount.name` or change `fabricate_app`/`fabricate_environment` without applying the role change.
 - Cannot reach RDS or ElastiCache: both accept traffic only from the EKS cluster security group; check the security groups and subnets in the AWS console.
-- `Permission denied` on a volume for one pod only: SELinux (Bottlerocket) labels a shared volume for the first pod that mounts it. The chart sets one `volumesSecurity.seLinuxLevel` on all three pods and a busybox init makes the volumes writable. Check: `kubectl exec -n fabricate deploy/fabricate-prod-worker -- sh -c 'cat /proc/self/attr/current; touch /mnt/fabricate/data/.w && echo writable'`. All three pods should show the same level (`s0:c100,c200`).
+- `Permission denied` on a volume for one pod only: SELinux (Bottlerocket) labels the shared data volume for the first pod that mounts it. The chart sets one `volumesSecurity.seLinuxLevel` on web and worker and a busybox init makes the volume writable. Check: `kubectl exec -n fabricate deploy/fabricate-prod-worker -- sh -c 'cat /proc/self/attr/current; touch /mnt/fabricate/data/.w && echo writable'`. Web and worker should show the same level (`s0:c100,c200`).
 
 **502/503, or no load balancer address.**
 - Address stays empty (AWS): EKS Auto Mode needs the `alb` IngressClass that Terraform creates through `additionalResources`. Check `kubectl get ingressclass` and `kubectl describe ingress -n fabricate`; the load balancer takes 2–5 minutes.

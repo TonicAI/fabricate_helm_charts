@@ -1,6 +1,6 @@
 {{- /*
-  WaitForFirstConsumer StorageClass — required on multi-zone GKE/EKS when several RWO PD/EBS
-  claims attach to sibling pods (data + storage + sockets). Immediate binding allocates each claim
+  WaitForFirstConsumer StorageClass — required on multi-zone GKE/EKS when RWO PD/EBS
+  claims attach to sibling pods (e.g. data and the in-cluster PostgreSQL volume). Immediate binding allocates each claim
   in arbitrary zones → merged node affinity impossible → Pending with "PersistentVolume node affinity".
 
  Terraform enables this via module.cluster helm_extra_values; see README.

@@ -33,9 +33,12 @@ resource "aws_security_group" "redis" {
   }
 }
 
+# RDS gets every subnet of the VPC (all AZs) rather than only the two cluster subnets: not every AZ has capacity for
+# every instance class / storage type (InvalidVPCNetworkStateFault), and RDS picks one that does. Pods reach it across
+# AZs inside the VPC. An explicit var.kube_subnet_ids restricts it to those subnets.
 resource "aws_db_subnet_group" "this" {
   name       = var.kube_cluster
-  subnet_ids = local.subnet_ids
+  subnet_ids = length(var.kube_subnet_ids) > 0 ? var.kube_subnet_ids : data.aws_subnets.selected.ids
 }
 
 resource "aws_db_instance" "this" {

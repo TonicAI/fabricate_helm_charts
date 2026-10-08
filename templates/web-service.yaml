@@ -13,7 +13,7 @@
 {{- end -}}
 {{- $webPort := include "fabricate.webPort" . | int -}}
 {{- $secretEnv := fromYaml (include "fabricate.mergedAppSecretEnv" .) -}}
-{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "web" "env" $secretEnv "required" (list "FABRICATE_PDF_SOCKET_PATH" "FABRICATE_DATABASE_HOST" "FABRICATE_DATABASE_PORT" "FABRICATE_DATABASE_NAME" "FABRICATE_DATABASE_USERNAME" "FABRICATE_DATABASE_PASSWORD" "FABRICATE_REDIS_URL" "FABRICATE_REDIS_PASSWORD" "SECRET_KEY_BASE")) -}}
+{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "web" "env" $secretEnv "required" (list "FABRICATE_DATABASE_HOST" "FABRICATE_DATABASE_PORT" "FABRICATE_DATABASE_NAME" "FABRICATE_DATABASE_USERNAME" "FABRICATE_DATABASE_PASSWORD" "FABRICATE_REDIS_URL" "FABRICATE_REDIS_PASSWORD" "SECRET_KEY_BASE")) -}}
 {{- $gceIng := and (eq (include "fabricate.ingressEnabled" . | trim) "1") (eq (include "fabricate.ingressProviderNormalized" . | trim) "gce") -}}
 {{- $bcName := include "fabricate.workloadName" (dict "root" . "suffix" "web-bc") -}}
 {{- $hcPath := trim (toString (default "/up" $svc.healthCheckPath)) -}}

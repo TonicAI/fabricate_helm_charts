@@ -4,7 +4,7 @@
 {{- $minReplicas := int (default 1 $scaling.min) -}}
 {{- $vpaManagesReplicas := default true (index (.Values.vpa | default dict) "managesReplicas") -}}
 {{- $secretEnv := fromYaml (include "fabricate.mergedAppSecretEnv" .) -}}
-{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "worker" "env" $secretEnv "required" (list "FABRICATE_PDF_SOCKET_PATH" "FABRICATE_DATABASE_HOST" "FABRICATE_DATABASE_PORT" "FABRICATE_DATABASE_NAME" "FABRICATE_DATABASE_USERNAME" "FABRICATE_DATABASE_PASSWORD" "FABRICATE_REDIS_URL" "FABRICATE_REDIS_PASSWORD" "SECRET_KEY_BASE")) -}}
+{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "worker" "env" $secretEnv "required" (list "FABRICATE_DATABASE_HOST" "FABRICATE_DATABASE_PORT" "FABRICATE_DATABASE_NAME" "FABRICATE_DATABASE_USERNAME" "FABRICATE_DATABASE_PASSWORD" "FABRICATE_REDIS_URL" "FABRICATE_REDIS_PASSWORD" "SECRET_KEY_BASE")) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

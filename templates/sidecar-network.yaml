@@ -15,7 +15,10 @@ spec:
     - Ingress
     - Egress
   ingress:
-    - from:
+    - ports:
+        - protocol: TCP
+          port: {{ include "fabricate.sidecar.port" . | int }}
+      from:
         - podSelector:
             matchLabels:
               {{- include "fabricate.selectorLabels" . | nindent 14 }}

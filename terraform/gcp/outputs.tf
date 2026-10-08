@@ -25,7 +25,7 @@ output "helm_volumes_security" {
   }
 }
 
-# Multi-zone Fabricate workloads share multiple RWO PD claims (data/storage/sockets).
+# Multi-zone Fabricate workloads use RWO PD claims (data, postgresql).
 # Immediate default StorageClasses pin each PVC to arbitrary zones → scheduling conflict.
 output "helm_extra_values" {
   value = {

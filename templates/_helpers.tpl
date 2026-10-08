@@ -133,8 +133,8 @@ nodeSelector:
 {{- end -}}
 
 {{- /*
-  Optional co-location of web/worker/sidecar on one node (values.podColocation.enabled). They share ReadWriteOnce EBS
-  claims (data/storage/sockets), which can only be attached to a single node; this keeps all pods together so a node
+  Optional co-location of web/worker on one node (values.podColocation.enabled). They share the ReadWriteOnce EBS
+  claim (data), which can only be attached to a single node; this keeps all pods together so a node
   replacement moves them (and re-attaches the volumes) as a group instead of causing Multi-Attach errors.
 */ -}}
 {{- define "fabricate.podColocation" -}}
@@ -147,6 +147,10 @@ affinity:
         labelSelector:
           matchLabels:
             {{- include "fabricate.selectorLabels" . | nindent 12 }}
+          matchExpressions:
+            - key: app.kubernetes.io/component
+              operator: In
+              values: [web, worker]
 {{- end }}
 {{- end -}}
 
@@ -178,10 +182,10 @@ strategy:
 {{- end }}
 
 {{- /*
-  RWO PVC mounts are root-owned by default; fsGroup lets non-root app/node UIDs create Unix sockets and write data.
+  RWO PVC mounts are root-owned by default; fsGroup lets non-root app UIDs write data.
   seLinuxLevel: on SELinux nodes (Bottlerocket / EKS Auto Mode) every pod gets a random MCS category pair and the shared
-  volumes are labeled for the first pod that mounts them, so web/worker/sidecar would be denied each other's files.
-  Giving all three pods the same level (e.g. "s0:c100,c200") lets them share the volumes.
+  volumes are labeled for the first pod that mounts them, so web and worker would be denied each other's files.
+  Giving both pods the same level (e.g. "s0:c100,c200") lets them share the volumes.
 */ -}}
 {{- define "fabricate.sharedAppVolumesSecurityContext" -}}
 securityContext:
@@ -195,8 +199,7 @@ securityContext:
 {{- /*
   Per-service strategy: same type as deployStrategy, rolling parameters from services.<name>.rollingUpdate
   (maxSurge default 0, maxUnavailable default 1). maxSurge 1 / maxUnavailable 0 starts the new pod before the old one
-  stops (needs the pods co-located on one node when volumes are ReadWriteOnce; do not use for the sidecar, whose unix
-  socket on the shared volume must have a single owner).
+  stops (needs the pods co-located on one node when volumes are ReadWriteOnce).
 */ -}}
 {{- define "fabricate.deploymentStrategyFor" -}}
 {{- $root := index . "root" -}}
@@ -272,6 +275,16 @@ initContainers:
 
 {{- define "fabricate.redis.svc" -}}
 {{ include "fabricate.workloadName" (dict "root" . "suffix" "redis") }}
+{{- end -}}
+
+{{- define "fabricate.sidecar.svc" -}}
+{{ include "fabricate.workloadName" (dict "root" . "suffix" "sidecar") }}
+{{- end -}}
+
+{{- /* TCP port the PDF sidecar listens on (services.sidecar.ports.http, default 3100). */ -}}
+{{- define "fabricate.sidecar.port" -}}
+{{- $sc := default (dict) .Values.services.sidecar -}}
+{{- default 3100 (index (default (dict) (index $sc "ports")) "http") -}}
 {{- end -}}
 
 {{- define "fabricate.web.svc" -}}
@@ -436,7 +449,7 @@ nginx
 {{- end -}}
 
 {{/*
-  Final stringData map for the app env Secret (.Values.env + services.web/worker env + sidecar + in-cluster Postgres/Redis).
+  Final stringData map for the app env Secret (.Values.env + services.web/worker env + in-cluster Postgres/Redis).
   Empty strings are skipped so overrides and built-in defaults can apply. Worker env wins over web over global on duplicate keys.
 */ -}}
 {{- define "fabricate.mergedAppSecretEnv" -}}
@@ -455,17 +468,20 @@ nginx
   "FABRICATE_DB_POOL_SIZE" "50"
   "FABRICATE_MAIL_PORT" "587"
   "FABRICATE_DATABASE_PORT" "5432"
-  "FABRICATE_STORAGE_SERVICE" "local"
+  "FABRICATE_STORAGE_SERVICE" "amazon"
   "FABRICATE_ORGANIZATION_NAME" "My Company"
 -}}
+{{- /* web/worker reach the PDF sidecar over the cluster network (TCP) by its Service name. */ -}}
+{{- if default false (index (default (dict) (index $services "sidecar")) "enabled") -}}
+{{- $_ := set $defaults "FABRICATE_PDF_HOST" (include "fabricate.sidecar.svc" .) -}}
+{{- $_ := set $defaults "FABRICATE_PDF_PORT" (include "fabricate.sidecar.port" . | toString) -}}
+{{- end -}}
 {{- $pg := default (dict) (index $services "postgresql") -}}
 {{- $redis := default (dict) (index $services "redis") -}}
 {{- $pgIn := default false (index $pg "enabled") -}}
 {{- $rIn := default false (index $redis "enabled") -}}
 {{- $pgEnv := default (dict) (index $pg "env") -}}
 {{- $redisEnv := default (dict) (index $redis "env") -}}
-{{- $sidecar := default (dict) (index $services "sidecar") -}}
-{{- $sidecarEnv := default (dict) (index $sidecar "env") -}}
 {{- $web := default (dict) (index $services "web") -}}
 {{- $wports := default (dict) (index $web "ports") -}}
 {{- $defaultWebPort := toString (default 3000 (index $wports "http")) -}}
@@ -519,13 +535,6 @@ nginx
 
 {{- /* mergeOverwrite: later maps win (plain merge keeps the first value, so defaults would beat user values) */ -}}
 {{- $envOut := mergeOverwrite (dict) $defaults $globalFiltered $webFiltered $workerFiltered -}}
-{{- $sidecarFiltered := dict -}}
-{{- range $k, $v := $sidecarEnv -}}
-{{- if ne (trim (toString $v)) "" -}}
-{{- $_ := set $sidecarFiltered $k $v -}}
-{{- end -}}
-{{- end -}}
-{{- $envOut = mergeOverwrite $envOut $sidecarFiltered -}}
 {{- if $pgIn }}
 {{- $pgHost := include "fabricate.postgresql.svc" . -}}
 {{- $pgPortStr := toString $pgPort -}}

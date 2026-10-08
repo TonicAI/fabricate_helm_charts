@@ -71,10 +71,10 @@ env:
   FABRICATE_REDIS_URL: "" # e.g. redis://:password@fabricate-prod-redis:6379
 
   # ---------------------------------------------------
-  # Sidecar (PDF generation; socket path for web/worker)
+  # PDF Sidecar
   # ---------------------------------------------------
-  FABRICATE_PDF_SOCKET_PATH: "/fabricate/sockets/pdf.sock"
-  # FABRICATE_PDF_PORT: ""                  # TCP port for the sidecar (used when no socket path is set)
+  # FABRICATE_PDF_HOST: ""
+  # FABRICATE_PDF_PORT: ""
   # FABRICATE_PDF_RENDER_TIMEOUT_MS: "30000"
 
   # ---------------------------------------------------
@@ -86,8 +86,8 @@ env:
   # ---------------------------------------------------
   # Cloud Storage (ActiveStorage for generated files)
   # ---------------------------------------------------
-  FABRICATE_STORAGE_SERVICE: "local" # local | amazon | azure | google
-  # On AWS, Terraform overrides this with "amazon" and sets FABRICATE_S3_BUCKET / FABRICATE_AWS_REGION (IAM role, no keys).
+  FABRICATE_STORAGE_SERVICE: "amazon" # amazon | azure | google ("local" needs a /fabricate/storage volume, which the chart no longer mounts)
+  # On AWS, Terraform also sets FABRICATE_S3_BUCKET / FABRICATE_AWS_REGION (IAM role, no keys).
 
   # ---------------------------------------------------
   # Amazon S3 Example Settings (if FABRICATE_STORAGE_SERVICE="amazon")
@@ -168,7 +168,7 @@ services:
   # Application container with REST API and web console
   web:
     enabled: true
-    image: quay.io/tonicai/fabricate:latest
+    image: quay.io/tonicai/fabricate:4.33.1-79766aae8824
     pullPolicy: IfNotPresent
     # ClusterIP | LoadBalancer | NodePort — default ClusterIP
     type: ClusterIP
@@ -200,6 +200,7 @@ services:
       readiness: { periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 2 }
     preStopSleepSeconds: 15
     terminationGracePeriodSeconds: 60
+    
     # RollingUpdate parameters (deployStrategy: RollingUpdate). maxSurge 1 / maxUnavailable 0 starts the new pod before
     # the old one stops, but needs all pods on one node with RWO volumes (podColocation.enabled). Terraform (aws) sets it.
     rollingUpdate: { maxSurge: 0, maxUnavailable: 1 }
@@ -207,10 +208,10 @@ services:
     mounts:
       - name: data
         path: /mnt/fabricate/data
-      - name: storage
-        path: /fabricate/storage
-      - name: sockets
-        path: /fabricate/sockets
+
+      # Optional: Mount local storage volume only when not using S3-compatible storage
+      # - name: storage
+      #   path: /fabricate/storage
 
     cpu:
       min: 200m
@@ -224,7 +225,7 @@ services:
   # Background jobs processor
   worker:
     enabled: true
-    image: quay.io/tonicai/fabricate:latest
+    image: quay.io/tonicai/fabricate:4.33.1-79766aae8824
     pullPolicy: IfNotPresent
     command: ["bundle", "exec", "sidekiq", "-e", "production"]
 
@@ -241,10 +242,10 @@ services:
     mounts:
       - name: data
         path: /mnt/fabricate/data
-      - name: storage
-        path: /fabricate/storage
-      - name: sockets
-        path: /fabricate/sockets
+
+      # Optional: Mount local storage volume only when not using S3-compatible storage
+      # - name: storage
+      #   path: /fabricate/storage
 
     cpu:
       min: 200m
@@ -258,7 +259,7 @@ services:
   # PDF generation sidecar (container image is still the HTML-to-PDF sidecar)
   sidecar:
     enabled: true
-    image: quay.io/tonicai/fabricate-html-to-pdf-sidecar:latest
+    image: quay.io/tonicai/fabricate-html-to-pdf-sidecar:4.33.1-79766aae8824
     pullPolicy: IfNotPresent
 
     scaling:
@@ -267,12 +268,16 @@ services:
       cpuThreshold: 0
       ramThreshold: 0
 
-    env:
-      FABRICATE_PDF_SOCKET_PATH: /fabricate/sockets/pdf.sock
+    # Listens on TCP; web and worker reach it at <sidecar Service>:<port> (set automatically as
+    # FABRICATE_PDF_HOST / FABRICATE_PDF_PORT). NetworkPolicy limits it to web/worker pods.
+    ports:
+      http: 3100
 
-    mounts:
-      - name: sockets
-        path: /fabricate/sockets
+    # HTTP path for the readiness and liveness probes
+    healthCheckPath: /health
+
+    # Extra container env only (not shared with web/worker)
+    env: {}
 
     cpu:
       min: 200m
@@ -381,20 +386,18 @@ volumes:
     size: 10Gi
     storageClass: ""
 
-  storage:
-    size: 10Gi
-    storageClass: ""
-
   data:
-    size: 10Gi
+    size: 32Gi
     storageClass: ""
 
-  sockets:
-    size: 1Gi
-    storageClass: ""
+  # Optional: Use only when S3 is not available and FABRICATE_STORAGE_SERVICE: "local" is set. 
+  # To use it, also uncomment the commented "storage" mount under services.web.mounts and services.worker.mounts.
+  # storage:
+  #   size: 32Gi
+  #   storageClass: ""
 
 # =========================================================
-# VOLUME SECURITY (pod mounts for shared PVCs: web / worker / sidecar)
+# VOLUME SECURITY (pod mounts for the shared data PVC: web / worker)
 # =========================================================
 # fsGroup: kubelet applies group ownership on mounts (non-root + RWO).
 # initChown: root initContainer that chowns PVC paths before the app starts.
@@ -405,7 +408,7 @@ volumes:
 volumesSecurity:
   fsGroup: 1000
   sysptrace: true
-  # seLinuxLevel: SELinux MCS level applied to web, worker and sidecar so they can share the RWO volumes. On SELinux
+  # seLinuxLevel: SELinux MCS level applied to web and worker so they can share the RWO volumes. On SELinux
   # nodes (Bottlerocket / EKS Auto Mode) each pod otherwise gets a random category pair and the volumes are labeled for
   # the first pod that mounts them; the others get "Permission denied" even when file ownership is correct.
   # Empty = do not set (non-SELinux nodes). Terraform (aws) sets it. Example: "s0:c100,c200".
@@ -445,10 +448,9 @@ networkPolicy:
 # =========================================================
 # When enabled, the chart installs HorizontalPodAutoscaler (autoscaling/v2) for web, worker, and sidecar
 # when each service has scaling.max > scaling.min. Disabled by default (false): skip HPAs and use fixed replicas.
-# NOTE: web, worker and sidecar share ReadWriteOnce volumes (data, storage, sockets) and a local unix socket, so all
-# their pods must stay on a single node (EC2 / VM) where those volumes are mounted. More replicas are only possible
-# on that same node (keep podColocation.enabled: true); scaling out across nodes needs ReadWriteMany volumes and TCP
-# instead of the socket.
+# NOTE: web and worker share the ReadWriteOnce data volume, so their pods must stay on a single node (EC2 / VM) where
+# it is mounted. More replicas are only possible on that same node (keep podColocation.enabled: true); scaling out across
+# nodes needs a ReadWriteMany data volume. The sidecar is reached over TCP and can run on any node.
 hpa:
   enabled: false
 
@@ -495,9 +497,9 @@ serviceAccount:
 deployStrategy: RollingUpdate
 
 # =========================================================
-# POD CO-LOCATION (web / worker / sidecar)
+# POD CO-LOCATION (web / worker)
 # =========================================================
-# web, worker and sidecar share ReadWriteOnce volumes (data/storage/sockets), which an EBS-style disk can attach to
+# web and worker share the ReadWriteOnce data volume, which an EBS-style disk can attach to
 # only one node at a time. enabled: true adds a required podAffinity (same node) so the pods always move together
 # when a node is replaced. Leave false for ReadWriteMany volumes or a single-node cluster you manage yourself.
 podColocation:
