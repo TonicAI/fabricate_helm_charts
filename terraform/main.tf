@@ -22,10 +22,19 @@ module "cluster" {
 # Helm/Kubernetes provider credentials come from module.cluster outputs (managed GKE/EKS).
 # Avoid data.google_container_cluster here: it only works if the cluster already exists in GCP,
 # so initial apply fails with "cluster not found" before google_container_cluster.primary is created.
+#
+# EKS tokens from data.aws_eks_cluster_auth last 15 minutes. A first apply spends longer than that
+# on RDS/ElastiCache/EKS, so a static token is expired by helm_release. On AWS, exec fetches a
+# fresh token at request time instead. Do not set token and exec together.
 locals {
   k8s_host  = module.cluster.host
   k8s_ca    = module.cluster.ca_certificate
   k8s_token = module.cluster.token
+  k8s_exec = var.cloud == "aws" ? [{
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", var.kube_cluster, "--region", var.kube_region]
+  }] : []
 }
 
 provider "google" {
@@ -36,14 +45,32 @@ provider "google" {
 provider "kubernetes" {
   host                   = local.k8s_host
   cluster_ca_certificate = local.k8s_ca
-  token                  = local.k8s_token
+  token                  = var.cloud == "aws" ? null : local.k8s_token
+
+  dynamic "exec" {
+    for_each = local.k8s_exec
+    content {
+      api_version = exec.value.api_version
+      command     = exec.value.command
+      args        = exec.value.args
+    }
+  }
 }
 
 provider "helm" {
   kubernetes {
     host                   = local.k8s_host
     cluster_ca_certificate = local.k8s_ca
-    token                  = local.k8s_token
+    token                  = var.cloud == "aws" ? null : local.k8s_token
+
+    dynamic "exec" {
+      for_each = local.k8s_exec
+      content {
+        api_version = exec.value.api_version
+        command     = exec.value.command
+        args        = exec.value.args
+      }
+    }
   }
 }
 
@@ -236,7 +263,13 @@ resource "terraform_data" "wait_for_ingress" {
       set -u
       ca="$(mktemp)"; trap 'rm -f "$ca"' EXIT
       printf '%s' "$KUBE_CA" > "$ca"
-      k() { kubectl --server "$KUBE_HOST" --certificate-authority "$ca" --token "$KUBE_TOKEN" "$@"; }
+      k() {
+        token="$KUBE_TOKEN"
+        if [ "$CLOUD" = "aws" ]; then
+          token="$(aws eks get-token --cluster-name "$CLUSTER_NAME" --region "$AWS_REGION" --query status.token --output text)"
+        fi
+        kubectl --server "$KUBE_HOST" --certificate-authority "$ca" --token "$token" "$@"
+      }
       deadline=$(( $(date +%s) + WAIT_SECONDS ))
       echo "Waiting for the load balancer of ingress $NS/$ING (up to $${WAIT_SECONDS}s)..."
       while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -250,6 +283,9 @@ resource "terraform_data" "wait_for_ingress" {
       KUBE_HOST    = local.k8s_host
       KUBE_CA      = local.k8s_ca
       KUBE_TOKEN   = local.k8s_token
+      CLOUD        = var.cloud
+      CLUSTER_NAME = var.kube_cluster
+      AWS_REGION   = var.kube_region
       NS           = var.kube_helm_namespace
       ING          = local.ingress_name
       WAIT_SECONDS = tostring(var.wait_for_ingress_timeout)

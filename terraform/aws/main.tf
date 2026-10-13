@@ -184,6 +184,8 @@ data "aws_eks_cluster_auth" "this" {
   name = aws_eks_cluster.this.name
 }
 
+# Helm/Kubernetes providers use `aws eks get-token` (exec), not this data source: the token
+# expires in 15 minutes, which a first apply exceeds. This still exposes the token as an output.
 resource "aws_iam_openid_connect_provider" "eks" {
   url             = aws_eks_cluster.this.identity[0].oidc[0].issuer
   client_id_list  = ["sts.amazonaws.com"]

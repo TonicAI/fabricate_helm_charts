@@ -173,7 +173,7 @@ kubectl get secret -n fabricate fabricate-prod-env -o jsonpath='{.data.FABRICATE
 
 ## Operations
 
-Connect kubectl to the cluster and look around:
+Connect kubectl to the cluster and look around. On AWS, point kubeconfig at the cluster first:
 
 ```bash
 aws eks update-kubeconfig --region "$AWS_REGION" --name fabricate-eks   # your kube_cluster value
@@ -228,6 +228,7 @@ aws logs tail /aws/eks/fabricate-eks/application --since 30m --region us-east-1 
 - *Script check fails (Landlock / `deno_sandbox`):* needs kernel 6.2+ with Landlock ABI v3. Test with `kubectl exec -n fabricate deploy/fabricate-prod-worker -- sh -c 'mkdir -p /mnt/fabricate/data/_sb && /usr/local/bin/deno_sandbox --current-dir /mnt/fabricate/data/_sb check --input /dev/null 2>&1 | head -5'`. If the node image lacks Landlock, Auto Mode is not usable for this app: use a self-managed node group on an image with Landlock (for example the Ubuntu EKS AMI).
 
 **Terraform errors.**
+- *`Kubernetes cluster unreachable: the server has asked for the client to provide credentials` (AWS):* EKS tokens last 15 minutes. Terraform must call `aws eks get-token` when it talks to the cluster (not reuse `aws_eks_cluster_auth` from the start of apply). Confirm `aws sts get-caller-identity` and `aws eks get-token --cluster-name <kube_cluster> --region <kube_region>` succeed with the same identity that created the cluster.
 - *`Error acquiring the state lock`:* another Terraform command is still running (or was killed). Wait for it; use `terraform force-unlock <ID>` only if nothing is running.
 - *Helm `cannot re-use a name that is still in use`:* the release exists in the cluster but not in the state: `terraform import 'helm_release.fabricate[0]' 'fabricate/fabricate'`.
 - *GKE `409 Already exists`:* import the cluster and node pool: `terraform import 'module.cluster.google_container_cluster.primary' 'projects/PROJECT/locations/REGION/clusters/CLUSTER'` and `terraform import 'module.cluster.google_container_node_pool.primary' 'projects/PROJECT/locations/REGION/clusters/CLUSTER/nodePools/CLUSTER-pool'`.
