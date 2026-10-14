@@ -1,0 +1,40 @@
+# Patterns to ignore when building packages (helm package / directory charts, e.g. Terraform helm_release).
+# Same idea as .gitignore; the terraform/ folder (state, tfvars with secrets) must never be part of the chart.
+.git/
+.github/
+.gitignore
+.helmignore
+.terraform/
+.terraform.lock.hcl
+terraform/
+../terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfvars.example
+*.tfplan
+
+# Not part of the chart
+values.example.yaml
+values.local.yaml
+*.local.yaml
+.env
+.env.*
+kubeconfig*
+*.pem
+*.key
+
+# Editors / OS / backups
+.DS_Store
+.vscode/
+.idea/
+.cursor/
+.claude/
+.antigravity/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.project

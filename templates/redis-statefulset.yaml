@@ -1,0 +1,56 @@
+{{- if .Values.services.redis.enabled }}
+{{- $svc := .Values.services.redis -}}
+{{- $redisPort := include "fabricate.redis.port" . | int -}}
+{{- $secretEnv := fromYaml (include "fabricate.mergedAppSecretEnv" .) -}}
+{{- $_ := include "fabricate.validateRequiredEnv" (dict "service" "redis" "env" $secretEnv "required" (list "REDIS_PASSWORD")) -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "redis") }}
+  {{- with include "fabricate.annotations" (dict "root" $ "extra" dict) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  serviceName: {{ include "fabricate.redis.svc" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "fabricate.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      annotations:
+        fabricate.ai/env-secret-checksum: {{ include "fabricate.envSecretChecksum" . | quote }}
+        {{- with $.Values.allAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "fabricate.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      {{- include "fabricate.workloadServiceAccountName" . | nindent 6 }}
+      {{- include "fabricate.serviceNodeSelector" (dict "svc" $svc) | nindent 6 }}
+      {{- include "fabricate.podTolerations" . | nindent 6 }}
+      {{- include "fabricate.imagePodPullSecrets" . | nindent 6 }}
+      containers:
+        - name: redis
+          image: {{ required "services.redis.image is required" $svc.image | quote }}
+          imagePullPolicy: {{ include "fabricate.serviceImagePullPolicy" (dict "root" . "svc" $svc) }}
+          command:
+            {{- include "fabricate.redisCommand" $svc | nindent 12 }}
+          ports:
+            - name: redis
+              containerPort: {{ $redisPort }}
+          {{- /* Only the password Redis needs, not the whole app Secret (SECRET_KEY_BASE, API keys, ...). */}}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fabricate.sharedSecretName" . | quote }}
+                  key: REDIS_PASSWORD
+          {{- include "fabricate.containerSecurityContext" . | nindent 10 }}
+          {{- include "fabricate.containerResources" (dict "svc" $svc) | nindent 10 }}
+{{- end }}

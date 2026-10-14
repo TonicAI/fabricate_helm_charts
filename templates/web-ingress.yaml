@@ -1,0 +1,172 @@
+{{- if and (eq (include "fabricate.webServiceEnabled" . | trim) "1") (eq (include "fabricate.ingressEnabled" . | trim) "1") }}
+{{- $ing := .Values.ingress | default dict -}}
+{{- $webPort := include "fabricate.webPort" . | int -}}
+{{- $webSvc := include "fabricate.web.svc" . -}}
+{{- $web := .Values.services.web | default dict -}}
+{{- $hcPath := include "fabricate.webHealthCheckPath" $web -}}
+{{- $provider := include "fabricate.ingressProviderNormalized" . | trim -}}
+{{- $customAnn := $ing.annotations | default dict -}}
+{{- $tls := $ing.tls | default dict -}}
+{{- $secretName := trim (toString (default "" (index $tls "secretName"))) -}}
+{{- $tlsOn := and (default false (index $tls "enabled")) (ne $secretName "") -}}
+{{- $issuer := trim (toString (default "" (index ($ing.certManager | default dict) "clusterIssuer"))) -}}
+{{- $effHost := include "fabricate.ingressHost" . | trim -}}
+{{- $gce := $ing.gce | default dict -}}
+{{- $mcCfg := $gce.managedCertificate | default dict -}}
+{{- $mcOn := and (eq $provider "gce") (default false (index $mcCfg "enabled")) -}}
+{{- $mcDomains := default list (index $mcCfg "domains") -}}
+{{- if and $mcOn $tlsOn -}}
+{{- fail "Use either ingress.tls (cert-manager / TLS secret) or ingress.gce.managedCertificate on GCE, not both" -}}
+{{- end -}}
+{{- $ruleHost := $effHost -}}
+{{- if and $mcOn (eq $ruleHost "") (gt (len $mcDomains) 0) -}}
+{{- $ruleHost = trim (toString (index $mcDomains 0)) -}}
+{{- end -}}
+{{- if and $tlsOn (eq $ruleHost "") -}}
+{{- fail "ingress.tls.enabled requires a host: set ingress.host, env.FABRICATE_HOST, or for managed certs ingress.gce.managedCertificate.domains" -}}
+{{- end -}}
+{{- if and $mcOn (eq $ruleHost "") -}}
+{{- fail "ingress.gce.managedCertificate requires ingress.host, env.FABRICATE_HOST, or managedCertificate.domains[0]" -}}
+{{- end -}}
+
+{{- $lbHttps := or $tlsOn $mcOn -}}
+{{- $doRedirect := false -}}
+{{- if and (eq $provider "gce") $lbHttps -}}
+{{- if hasKey $gce "redirectToHttps" -}}
+{{- $doRedirect = and $lbHttps (default false (index $gce "redirectToHttps")) -}}
+{{- else if ne $issuer "" -}}
+{{- $doRedirect = false -}}
+{{- else -}}
+{{- $doRedirect = true -}}
+{{- end -}}
+{{- end -}}
+{{- $feName := include "fabricate.workloadName" (dict "root" . "suffix" "ingress-fe") -}}
+{{- $mcName := include "fabricate.workloadName" (dict "root" . "suffix" "managed-cert") -}}
+
+{{- /* Provider defaults; merged with ingress.annotations (user wins). */ -}}
+{{- $defaultAnn := dict -}}
+{{- if eq $provider "gce" -}}
+{{- $_ := set $defaultAnn "kubernetes.io/ingress.class" "gce" -}}
+{{- else if eq $provider "alb" -}}
+{{- $_ := set $defaultAnn "alb.ingress.kubernetes.io/scheme" "internet-facing" -}}
+{{- $_ := set $defaultAnn "alb.ingress.kubernetes.io/target-type" "ip" -}}
+{{- $_ := set $defaultAnn "alb.ingress.kubernetes.io/healthcheck-path" $hcPath -}}
+{{- else if eq $provider "custom" -}}
+{{- /* annotations-only; set ingress.class / ingress.host as needed */ -}}
+{{- else -}}
+{{- $_ := set $defaultAnn "nginx.ingress.kubernetes.io/backend-protocol" "HTTP" -}}
+{{- $_ := set $defaultAnn "nginx.ingress.kubernetes.io/proxy-body-size" "1024m" -}}
+{{- $_ := set $defaultAnn "nginx.ingress.kubernetes.io/proxy-connect-timeout" "3600" -}}
+{{- $_ := set $defaultAnn "nginx.ingress.kubernetes.io/proxy-send-timeout" "3600" -}}
+{{- $_ := set $defaultAnn "nginx.ingress.kubernetes.io/proxy-read-timeout" "3600" -}}
+{{- $_ := set $defaultAnn "nginx.ingress.kubernetes.io/proxy-next-upstream-timeout" "3600" -}}
+{{- end -}}
+{{- $ann := mergeOverwrite (dict) $defaultAnn $customAnn -}}
+{{- if and $tlsOn (eq $provider "nginx") -}}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/ssl-redirect" "true" -}}
+{{- end -}}
+{{- if ne $issuer "" -}}
+{{- $_ := set $ann "cert-manager.io/cluster-issuer" $issuer -}}
+{{- end -}}
+{{- if and (eq $provider "gce") (ne $issuer "") -}}
+{{- $_ := set $ann "acme.cert-manager.io/http01-edit-in-place" "true" -}}
+{{- end -}}
+{{- if $mcOn -}}
+{{- $_ := set $ann "networking.gke.io/managed-certificates" $mcName -}}
+{{- end -}}
+{{- if and (eq $provider "gce") $doRedirect -}}
+{{- $_ := set $ann "networking.gke.io/v1beta1.FrontendConfig" $feName -}}
+{{- end -}}
+
+{{- $cls := trim (include "fabricate.ingressClassResolved" .) -}}
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "ingress") }}
+  namespace: {{ .Release.Namespace }}
+  {{- with include "fabricate.annotations" (dict "root" $ "extra" $ann) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+    {{- if gt (len ($ing.labels | default dict)) 0 }}
+    {{- toYaml $ing.labels | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if ne $cls "" }}
+  ingressClassName: {{ $cls | quote }}
+  {{- end }}
+  {{- if $tlsOn }}
+  tls:
+    - hosts:
+        - {{ $ruleHost | quote }}
+      secretName: {{ $secretName | quote }}
+  {{- end }}
+  rules:
+    {{- if $ruleHost }}
+    - host: {{ $ruleHost | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $webSvc | quote }}
+                port:
+                  number: {{ $webPort }}
+    {{- else }}
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $webSvc | quote }}
+                port:
+                  number: {{ $webPort }}
+    {{- end }}
+{{- if and (eq $provider "gce") $doRedirect }}
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: {{ $feName | quote }}
+  namespace: {{ .Release.Namespace }}
+  {{- with include "fabricate.annotations" (dict "root" $ "extra" dict) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT
+{{- end }}
+{{- if $mcOn }}
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ $mcName | quote }}
+  namespace: {{ .Release.Namespace }}
+  {{- with include "fabricate.annotations" (dict "root" $ "extra" dict) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  {{- if eq (len $mcDomains) 0 }}
+  domains:
+    - {{ $ruleHost | quote }}
+  {{- else }}
+  domains:
+    {{- range $d := $mcDomains }}
+    - {{ $d | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

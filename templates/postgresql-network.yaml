@@ -1,0 +1,33 @@
+{{- if and (eq (include "fabricate.networkPolicyOn" . | trim) "1") .Values.services.postgresql.enabled }}
+{{- $pgPort := include "fabricate.postgresql.port" . | int -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "postgresql-access") }}
+  {{- with include "fabricate.annotations" (dict "root" $ "extra" dict) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "fabricate.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "fabricate.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: web
+        - podSelector:
+            matchLabels:
+              {{- include "fabricate.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: worker
+      ports:
+        - protocol: TCP
+          port: {{ $pgPort }}
+{{- end }}

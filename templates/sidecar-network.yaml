@@ -1,0 +1,34 @@
+{{- if and (eq (include "fabricate.networkPolicyOn" . | trim) "1") .Values.services.sidecar.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "sidecar-access") }}
+  {{- with include "fabricate.annotations" (dict "root" $ "extra" dict) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "fabricate.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sidecar
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: {{ include "fabricate.sidecar.port" . | int }}
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "fabricate.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: web
+        - podSelector:
+            matchLabels:
+              {{- include "fabricate.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: worker
+  egress: []
+{{- end }}

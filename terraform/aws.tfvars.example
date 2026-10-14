@@ -1,0 +1,32 @@
+# AWS (EKS). Copy to terraform.tfvars and edit.
+# Needs: AWS credentials and `export AWS_REGION=<region>`.
+
+cloud   = "aws"
+region  = "us-east-1"
+cluster = "fabricate-eks"
+
+# Optional: Overrides for ENV values from values.yml
+fabricate_env = {
+  FABRICATE_DEPLOYMENT = "1" # change the value to re-deploy the pods with `terraform apply` even without changes
+}
+
+# Optional: HTTPS listener (443) on the ALB with HTTP -> HTTPS redirect (default true). Set false for plain HTTP only.
+# enable_https = true
+# Optional: ACM certificate for the ALB HTTPS listener. If unset, a self-signed certificate is generated on the first apply (browsers show a warning).
+# https_cert_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Optional: Amazon SES for outgoing email (default true): verifies ses_email (AWS emails a link, click it once), uses it
+# as FABRICATE_MAIL_FROM and wires FABRICATE_MAIL_* env vars. Nothing is set up while ses_email is empty.
+# Set enable_ses = false to use your own SMTP server through FABRICATE_MAIL_* in fabricate_env.
+# enable_ses = true
+ses_email  = "no-reply@fabricate.example.com"
+
+# Optional: tags on all AWS resources
+# tags = { Owner = "platform-team" }
+
+# Optional: use another VPC instead of the default one (subnets in at least two AZs)
+# vpc_id         = "vpc-0123456789abcdef0"
+# vpc_subnet_ids = ["subnet-aaaa", "subnet-bbbb"]
+
+# Optional: only provision cloud resources, install the Helm chart yourself
+# skip_helm = true

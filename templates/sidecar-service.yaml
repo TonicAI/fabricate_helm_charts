@@ -1,0 +1,21 @@
+{{- if .Values.services.sidecar.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fabricate.sidecar.svc" . }}
+  {{- with include "fabricate.annotations" (dict "root" $ "extra" dict) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar
+spec:
+  type: ClusterIP
+  ports:
+    - name: pdf
+      port: {{ include "fabricate.sidecar.port" . | int }}
+      targetPort: pdf
+  selector:
+    {{- include "fabricate.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar
+{{- end }}

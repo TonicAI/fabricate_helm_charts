@@ -1,0 +1,18 @@
+# GCP (GKE). Copy to terraform.tfvars and edit.
+# Needs: `gcloud auth application-default login`.
+
+cloud      = "gcp"
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+cluster    = "fabricate-gke"
+
+# Optional: Overrides for ENV values from values.yml
+fabricate_env = {
+  FABRICATE_DEPLOYMENT     = "1"                     # change the value to re-deploy the pods with `terraform apply` even without changes
+}
+
+# Optional: labels on all GCP resources (lowercase keys/values)
+# tags = { owner = "platform-team" }
+
+# Optional: only provision cloud resources, install the Helm chart yourself
+# skip_helm = true

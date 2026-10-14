@@ -1,0 +1,16 @@
+apiVersion: v2
+name: fabricate
+description: Tonic Fabricate — Web, Worker, Sidecar, PostgreSQL, Redis
+type: application
+version: 0.9.0
+appVersion: "4.36.1-af95be0f55e0"
+home: https://docs.tonic.ai/fabricate
+sources:
+  - https://github.com/TonicAI/fabricate_helm_charts
+maintainers:
+  - name: Tonic.ai - Fabricate Team
+    email: fabricate@tonic.ai
+    url: https://www.tonic.ai
+keywords:
+  - fabricate
+  - helm

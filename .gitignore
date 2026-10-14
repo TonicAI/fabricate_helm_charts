@@ -1,0 +1,63 @@
+# IDEs
+.vscode/
+.idea/
+.cursor/
+.claude/
+.antigravity/
+
+.DS_Store
+pkg/*
+*.pyc
+bin/*
+.project
+/.bin
+/_test/secrets/*.json
+._*
+*.iml
+*~
+\#*\#
+.\#*
+[._]*.s[a-w][a-z]
+[._]s[a-w][a-z]
+*.un~
+Session.vim
+.netrwhist
+**/charts/*.tgz
+fabricate-*.tgz
+.history
+
+/values.local.yaml
+# Local chart values: copy values.example.yaml to values.yaml (the committed defaults are in values.example.yaml)
+values.yaml
+**/*.local.yaml
+node_modules/
+.env
+.env.*
+# Terraform: variable files hold secrets (the committed templates are *.tfvars.example)
+terraform.tfvars
+*.tfvars
+*.tfvars.json
+
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.*.log
+
+# Terraform plans, overrides, CLI config
+*.tfplan
+tfplan
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Credentials / kubeconfigs
+kubeconfig
+kubeconfig*
+*.kubeconfig
+*.pem
+*.key
+*.p12
+secrets.yaml.local

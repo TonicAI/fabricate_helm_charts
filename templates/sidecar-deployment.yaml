@@ -1,0 +1,70 @@
+{{- if .Values.services.sidecar.enabled }}
+{{- $svc := .Values.services.sidecar -}}
+{{- $port := include "fabricate.sidecar.port" . | int -}}
+{{- $hcPath := include "fabricate.sidecarHealthCheckPath" $svc -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fabricate.workloadName" (dict "root" . "suffix" "sidecar") }}
+  {{- with include "fabricate.annotations" (dict "root" $ "extra" dict) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  labels:
+    {{- include "fabricate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar
+spec:
+  replicas: 1
+  {{- include "fabricate.deploymentStrategy" . | nindent 2 }}
+  selector:
+    matchLabels:
+      {{- include "fabricate.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sidecar
+  template:
+    metadata:
+      annotations:
+        fabricate.ai/env-secret-checksum: {{ include "fabricate.envSecretChecksum" . | quote }}
+        {{- with $.Values.allAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "fabricate.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sidecar
+    spec:
+      {{- include "fabricate.workloadServiceAccountName" . | nindent 6 }}
+      {{- with include "fabricate.serviceNodeSelector" (dict "svc" $svc) | trim }}{{- . | nindent 6 }}{{- end }}
+      {{- with include "fabricate.podTolerations" . | trim }}{{- . | nindent 6 }}{{- end }}
+      {{- with include "fabricate.imagePodPullSecrets" . | trim }}{{- . | nindent 6 }}{{- end }}
+      containers:
+        - name: sidecar
+          image: {{ required "services.sidecar.image is required" $svc.image | quote }}
+          imagePullPolicy: {{ include "fabricate.serviceImagePullPolicy" (dict "root" . "svc" $svc) }}
+          # No shared app Secret: the sidecar only needs its bind address (it renders untrusted HTML).
+          env:
+            - name: FABRICATE_PDF_HOST
+              value: "0.0.0.0"
+            - name: FABRICATE_PDF_PORT
+              value: {{ $port | quote }}
+            {{- range $k, $v := default (dict) $svc.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          {{- include "fabricate.sidecarSecurityContext" . | nindent 10 }}
+          ports:
+            - name: pdf
+              containerPort: {{ $port }}
+          readinessProbe:
+            httpGet:
+              path: {{ $hcPath | quote }}
+              port: pdf
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: {{ $hcPath | quote }}
+              port: pdf
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- with include "fabricate.containerResources" (dict "svc" $svc) | trim }}{{- . | nindent 10 }}{{- end }}
+{{- end }}
